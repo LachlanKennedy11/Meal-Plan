@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Smart Meal Planner</title>
     
     <!-- Tailwind CSS -->
@@ -27,17 +27,23 @@
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
+            -webkit-tap-highlight-color: transparent; /* Remove tap highlight on iOS */
+        }
+        /* Smooth scrolling */
+        html {
+            scroll-behavior: smooth;
         }
     </style>
 </head>
-<body class="bg-gray-50 text-slate-800">
+<body class="bg-gray-50 text-slate-800 h-[100dvh] w-screen overflow-hidden fixed">
 
-    <div id="root"></div>
+    <div id="root" class="h-full w-full"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- ICONS (Inline SVGs to replace Lucide-React imports) ---
+        // --- ICONS (Inline SVGs) ---
         const IconBase = ({ children, size = 24, className = "", ...props }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
                 {children}
@@ -58,9 +64,7 @@
         const Edit = (props) => <IconBase {...props}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></IconBase>;
         const Settings = (props) => <IconBase {...props}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></IconBase>;
 
-        // --- ADVANCED RECIPE GENERATOR ENGINE ---
-        // (Procedurally generates 600+ unique meal combinations)
-
+        // --- DATA ENGINE ---
         const PROTEIN_CUTS = {
           'Chicken': ['Breasts', 'Thighs', 'Drumsticks', 'Tenders', 'Whole Roast'],
           'Beef': ['Sirloin Steaks', 'Ground Beef', 'Chuck Roast', 'Strip Steaks', 'Stew Meat'],
@@ -73,108 +77,18 @@
         const STYLES = ['Roasted', 'Grilled', 'Pan-Seared', 'Slow-Cooked', 'Stir-Fried', 'Baked', 'Braised', 'Air-Fried'];
 
         const FLAVOR_PROFILES = {
-          'Lemon Herb': {
-            ingredients: [
-              { item: 'Lemons', amount: '2', unit: 'whole' },
-              { item: 'Fresh Parsley', amount: '1', unit: 'bunch' },
-              { item: 'Dried Oregano', amount: '1', unit: 'tsp' }
-            ],
-            tags: ['Fresh', 'Light']
-          },
-          'Garlic Butter': {
-            ingredients: [
-              { item: 'Unsalted Butter', amount: '4', unit: 'tbsp' },
-              { item: 'Garlic', amount: '6', unit: 'cloves' },
-              { item: 'Italian Seasoning', amount: '1', unit: 'tbsp' }
-            ],
-            tags: ['Keto', 'Comfort']
-          },
-          'Spicy BBQ': {
-            ingredients: [
-              { item: 'BBQ Sauce', amount: '0.5', unit: 'cup' },
-              { item: 'Chili Powder', amount: '1', unit: 'tsp' },
-              { item: 'Cayenne Pepper', amount: '0.5', unit: 'tsp' },
-              { item: 'Red Onion', amount: '1', unit: 'medium' }
-            ],
-            tags: ['Spicy', 'Kid-Friendly']
-          },
-          'Teriyaki': {
-            ingredients: [
-              { item: 'Soy Sauce', amount: '0.5', unit: 'cup' },
-              { item: 'Fresh Ginger', amount: '1', unit: 'inch piece' },
-              { item: 'Honey', amount: '2', unit: 'tbsp' },
-              { item: 'Sesame Seeds', amount: '1', unit: 'tsp' }
-            ],
-            tags: ['Sweet', 'Asian-Inspired']
-          },
-          'Mediterranean': {
-            ingredients: [
-              { item: 'Kalamata Olives', amount: '0.5', unit: 'cup' },
-              { item: 'Feta Cheese', amount: '0.5', unit: 'cup' },
-              { item: 'Cherry Tomatoes', amount: '1', unit: 'pint' },
-              { item: 'Cucumber', amount: '1', unit: 'whole' }
-            ],
-            tags: ['Healthy', 'Keto']
-          },
-          'Cajun': {
-            ingredients: [
-              { item: 'Cajun Seasoning', amount: '2', unit: 'tbsp' },
-              { item: 'Bell Peppers', amount: '2', unit: 'sliced' },
-              { item: 'Celery', amount: '2', unit: 'stalks' },
-              { item: 'Onion', amount: '1', unit: 'large' }
-            ],
-            tags: ['Spicy', 'Hearty']
-          },
-          'Creamy Mushroom': {
-            ingredients: [
-              { item: 'Heavy Cream', amount: '0.5', unit: 'cup' },
-              { item: 'Mushrooms', amount: '8', unit: 'oz' },
-              { item: 'Thyme', amount: '2', unit: 'sprigs' },
-              { item: 'Shallot', amount: '1', unit: 'minced' }
-            ],
-            tags: ['Keto', 'Rich']
-          },
-          'Zesty Lime': {
-            ingredients: [
-              { item: 'Limes', amount: '3', unit: 'whole' },
-              { item: 'Cilantro', amount: '1', unit: 'bunch' },
-              { item: 'Cumin', amount: '1', unit: 'tsp' }
-            ],
-            tags: ['Paleo', 'Fresh']
-          },
-          'Sweet & Sour': {
-            ingredients: [
-              { item: 'Pineapple Chunks', amount: '1', unit: 'cup' },
-              { item: 'Bell Peppers', amount: '2', unit: 'chopped' },
-              { item: 'Rice Vinegar', amount: '2', unit: 'tbsp' },
-              { item: 'Ketchup', amount: '2', unit: 'tbsp' }
-            ],
-            tags: ['Kid-Friendly', 'Sweet']
-          },
-          'Honey Glazed': {
-            ingredients: [
-              { item: 'Honey', amount: '0.25', unit: 'cup' },
-              { item: 'Mustard', amount: '1', unit: 'tbsp' },
-              { item: 'Apple Cider Vinegar', amount: '1', unit: 'tbsp' }
-            ],
-            tags: ['Kid-Friendly', 'Sweet']
-          },
-          'Pesto': {
-            ingredients: [
-              { item: 'Basil Pesto', amount: '0.5', unit: 'jar' },
-              { item: 'Parmesan Cheese', amount: '0.25', unit: 'cup' },
-              { item: 'Pine Nuts', amount: '1', unit: 'tbsp' }
-            ],
-            tags: ['Keto', 'Fast']
-          },
-          'Coconut Curry': {
-            ingredients: [
-              { item: 'Coconut Milk', amount: '1', unit: 'can' },
-              { item: 'Red Curry Paste', amount: '2', unit: 'tbsp' },
-              { item: 'Lime', amount: '1', unit: 'juiced' }
-            ],
-            tags: ['Paleo', 'Dairy-Free']
-          }
+          'Lemon Herb': { ingredients: [{ item: 'Lemons', amount: '2', unit: 'whole' }, { item: 'Fresh Parsley', amount: '1', unit: 'bunch' }, { item: 'Dried Oregano', amount: '1', unit: 'tsp' }], tags: ['Fresh', 'Light'] },
+          'Garlic Butter': { ingredients: [{ item: 'Unsalted Butter', amount: '4', unit: 'tbsp' }, { item: 'Garlic', amount: '6', unit: 'cloves' }, { item: 'Italian Seasoning', amount: '1', unit: 'tbsp' }], tags: ['Keto', 'Comfort'] },
+          'Spicy BBQ': { ingredients: [{ item: 'BBQ Sauce', amount: '0.5', unit: 'cup' }, { item: 'Chili Powder', amount: '1', unit: 'tsp' }, { item: 'Cayenne Pepper', amount: '0.5', unit: 'tsp' }, { item: 'Red Onion', amount: '1', unit: 'medium' }], tags: ['Spicy', 'Kid-Friendly'] },
+          'Teriyaki': { ingredients: [{ item: 'Soy Sauce', amount: '0.5', unit: 'cup' }, { item: 'Fresh Ginger', amount: '1', unit: 'inch piece' }, { item: 'Honey', amount: '2', unit: 'tbsp' }, { item: 'Sesame Seeds', amount: '1', unit: 'tsp' }], tags: ['Sweet', 'Asian-Inspired'] },
+          'Mediterranean': { ingredients: [{ item: 'Kalamata Olives', amount: '0.5', unit: 'cup' }, { item: 'Feta Cheese', amount: '0.5', unit: 'cup' }, { item: 'Cherry Tomatoes', amount: '1', unit: 'pint' }, { item: 'Cucumber', amount: '1', unit: 'whole' }], tags: ['Healthy', 'Keto'] },
+          'Cajun': { ingredients: [{ item: 'Cajun Seasoning', amount: '2', unit: 'tbsp' }, { item: 'Bell Peppers', amount: '2', unit: 'sliced' }, { item: 'Celery', amount: '2', unit: 'stalks' }, { item: 'Onion', amount: '1', unit: 'large' }], tags: ['Spicy', 'Hearty'] },
+          'Creamy Mushroom': { ingredients: [{ item: 'Heavy Cream', amount: '0.5', unit: 'cup' }, { item: 'Mushrooms', amount: '8', unit: 'oz' }, { item: 'Thyme', amount: '2', unit: 'sprigs' }, { item: 'Shallot', amount: '1', unit: 'minced' }], tags: ['Keto', 'Rich'] },
+          'Zesty Lime': { ingredients: [{ item: 'Limes', amount: '3', unit: 'whole' }, { item: 'Cilantro', amount: '1', unit: 'bunch' }, { item: 'Cumin', amount: '1', unit: 'tsp' }], tags: ['Paleo', 'Fresh'] },
+          'Sweet & Sour': { ingredients: [{ item: 'Pineapple Chunks', amount: '1', unit: 'cup' }, { item: 'Bell Peppers', amount: '2', unit: 'chopped' }, { item: 'Rice Vinegar', amount: '2', unit: 'tbsp' }, { item: 'Ketchup', amount: '2', unit: 'tbsp' }], tags: ['Kid-Friendly', 'Sweet'] },
+          'Honey Glazed': { ingredients: [{ item: 'Honey', amount: '0.25', unit: 'cup' }, { item: 'Mustard', amount: '1', unit: 'tbsp' }, { item: 'Apple Cider Vinegar', amount: '1', unit: 'tbsp' }], tags: ['Kid-Friendly', 'Sweet'] },
+          'Pesto': { ingredients: [{ item: 'Basil Pesto', amount: '0.5', unit: 'jar' }, { item: 'Parmesan Cheese', amount: '0.25', unit: 'cup' }, { item: 'Pine Nuts', amount: '1', unit: 'tbsp' }], tags: ['Keto', 'Fast'] },
+          'Coconut Curry': { ingredients: [{ item: 'Coconut Milk', amount: '1', unit: 'can' }, { item: 'Red Curry Paste', amount: '2', unit: 'tbsp' }, { item: 'Lime', amount: '1', unit: 'juiced' }], tags: ['Paleo', 'Dairy-Free'] }
         };
 
         const SIDES_POOL = [
@@ -256,13 +170,14 @@
                     calories: baseCals + variance,
                     time: isFast ? 25 : 45 + Math.floor(Math.random() * 20),
                     ingredientsCount: ingredients.length,
-                    tags: [
+                    // FIX: Deduplicate tags using Set to avoid "duplicate key" React warnings
+                    tags: [...new Set([
                       isFast ? 'Under 30' : 'Slow Cook', 
                       isKeto ? 'Keto' : '', 
                       isPaleo ? 'Paleo' : '',
                       isKidFriendly ? 'Kid-Friendly' : '',
                       ...(flavorProfile.tags || [])
-                    ].filter(Boolean),
+                    ].filter(Boolean))],
                     ingredients: ingredients,
                     instructions: [
                       `Prepare the ${cut} by patting dry.`,
@@ -293,6 +208,16 @@
         const RECIPES = generateExtensiveDatabase();
         const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
         const PROTEINS = ['Chicken', 'Beef', 'Pork', 'Fish', 'Vegetarian', 'Vegan'];
+
+        function ErrorFallback({error}) {
+            return (
+                <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+                    <h2 className="text-xl font-bold text-red-600 mb-2">Something went wrong</h2>
+                    <p className="text-sm text-gray-500">{error?.message || "Unknown error"}</p>
+                    <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-slate-900 text-white rounded-lg">Reload App</button>
+                </div>
+            );
+        }
 
         function MealPlannerApp() {
           const [activeTab, setActiveTab] = useState('dashboard');
@@ -329,7 +254,6 @@
             const file = event.target.files[0];
             if (file) {
                 setIsScanning(true);
-                // Create preview
                 const reader = new FileReader();
                 reader.onloadend = () => {
                     setScannedImage(reader.result);
@@ -340,6 +264,11 @@
                         // Simulation: Pick 3-5 random recipes
                         const shuffled = [...RECIPES].sort(() => 0.5 - Math.random());
                         setScanResults(shuffled.slice(0, 4)); 
+                        
+                        // Safely reset input value using ref to avoid React synthetic event issues
+                        if(fileInputRef.current) {
+                            fileInputRef.current.value = '';
+                        }
                     }, 2000);
                 };
                 reader.readAsDataURL(file);
@@ -438,6 +367,9 @@
             setCheckedItems(prev => ({...prev, [item]: !prev[item]}));
           };
 
+          // Safe render check
+          if (!weeklyPlan.length) return null;
+
           return (
             <div className="flex h-screen bg-gray-50 text-slate-800 font-sans overflow-hidden">
               
@@ -466,28 +398,71 @@
                 </div>
               </aside>
 
-              <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 flex justify-around p-3 pb-6">
+              <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 flex justify-around p-3 pb-8 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
                 <MobileNavItem icon={<Home size={20}/>} label="Home" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
                 <MobileNavItem icon={<ShoppingCart size={20}/>} label="Shop" active={activeTab === 'grocery'} onClick={() => setActiveTab('grocery')} />
+                <MobileNavItem icon={<Camera size={20}/>} label="Scan" active={activeTab === 'scanner'} onClick={() => setActiveTab('scanner')} />
                 <MobileNavItem icon={<Settings size={20}/>} label="Prefs" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
               </div>
 
               <main className="flex-1 flex flex-col h-full overflow-hidden relative">
                 
-                <div className="md:hidden bg-white p-4 flex justify-between items-center shadow-sm z-10">
+                <div className="md:hidden bg-white p-3 flex justify-between items-center shadow-sm z-30 sticky top-0">
                    <div className="flex items-center gap-2">
-                     <ChefHat className="text-emerald-600" size={24}/>
-                     <span className="font-bold text-lg">MealMaster</span>
+                     <div className="bg-emerald-500 p-1.5 rounded-lg text-white">
+                        <ChefHat size={20}/>
+                     </div>
+                     <span className="font-bold text-lg text-slate-800">MealMaster</span>
+                   </div>
+                   <div className="flex items-center gap-3">
+                       <button 
+                           onClick={() => setActiveTab('scanner')}
+                           className="p-2 text-slate-500 hover:text-emerald-600 active:scale-95 transition-transform"
+                       >
+                           <Camera size={20} />
+                       </button>
+                       {activeTab === 'dashboard' && (
+                         <button 
+                             onClick={regeneratePlan}
+                             className="p-2 text-emerald-600 active:scale-95 transition-transform"
+                         >
+                             <RefreshCw size={20} />
+                         </button>
+                       )}
                    </div>
                 </div>
 
                 {activeTab === 'dashboard' && (
                   <div className="flex-1 flex flex-col overflow-hidden">
                     
-                    <div className="bg-white border-b border-gray-200 p-4 md:p-6 shadow-sm z-10 flex-shrink-0">
+                    <div className="bg-white border-b border-gray-200 p-4 md:p-6 shadow-sm z-20 flex-shrink-0 sticky top-0">
                        <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4 gap-3">
-                          <h2 className="text-xl md:text-2xl font-bold text-slate-800">Your Weekly Menu</h2>
-                          <div className="flex gap-2">
+                          <h2 className="text-xl md:text-2xl font-bold text-slate-800 hidden md:block">Your Weekly Menu</h2>
+                          
+                          <div className="md:hidden flex justify-between items-end mb-2">
+                            <span className="text-sm font-semibold text-gray-500 uppercase tracking-wider">This Week</span>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => setActiveTab('scanner')}
+                                    className="flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full active:scale-95 transition-transform"
+                                >
+                                    <Camera size={14} /> Scan
+                                </button>
+                                <button 
+                                    onClick={() => setShowCustomizeModal(true)}
+                                    className="flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full active:scale-95 transition-transform"
+                                >
+                                    <Edit size={14} /> Customize
+                                </button>
+                            </div>
+                          </div>
+                          <div className="hidden md:flex gap-2">
+                            <button 
+                                onClick={() => setActiveTab('scanner')}
+                                className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg transition-colors"
+                            >
+                                <Camera size={16} /> Scan Pantry
+                            </button>
                             <button 
                                 onClick={() => setShowCustomizeModal(true)}
                                 className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg transition-colors"
@@ -503,21 +478,21 @@
                           </div>
                        </div>
                        
-                       <div className="flex gap-2 md:gap-4 overflow-x-auto pb-2 scrollbar-hide">
+                       <div className="flex gap-2 md:gap-4 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
                           {weeklyPlan.map((item, idx) => (
                             <button
                               key={item.day}
                               onClick={() => setSelectedDay(item.day)}
-                              className={`flex flex-col items-center min-w-[80px] md:min-w-[100px] p-3 rounded-2xl border transition-all ${
+                              className={`flex flex-col items-center min-w-[75px] md:min-w-[100px] p-2 md:p-3 rounded-2xl border transition-all active:scale-95 ${
                                 selectedDay === item.day 
                                 ? 'border-emerald-500 bg-emerald-50 shadow-md transform scale-105' 
-                                : 'border-gray-100 bg-white hover:border-emerald-200'
+                                : 'border-gray-100 bg-white'
                               }`}
                             >
-                               <span className={`text-xs font-bold uppercase mb-1 ${selectedDay === item.day ? 'text-emerald-700' : 'text-gray-400'}`}>
+                               <span className={`text-[10px] md:text-xs font-bold uppercase mb-1 ${selectedDay === item.day ? 'text-emerald-700' : 'text-gray-400'}`}>
                                  {item.day.substring(0,3)}
                                </span>
-                               <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-2 ${selectedDay === item.day ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                               <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 md:mb-2 ${selectedDay === item.day ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
                                   <Utensils size={14} />
                                </div>
                                <span className="text-[10px] text-center truncate w-full px-1 font-medium text-slate-600">
@@ -528,23 +503,23 @@
                        </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50/50 pb-24">
+                    <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50/50 pb-32 md:pb-8">
                        {currentMeal ? (
-                         <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 pb-20">
+                         <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8 pb-20">
                             
-                            <div className="lg:col-span-2 space-y-6">
-                               <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 relative overflow-hidden group">
-                                  <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50 rounded-full -mr-16 -mt-16 opacity-50 group-hover:scale-110 transition-transform duration-700"></div>
+                            <div className="lg:col-span-2 space-y-4 md:space-y-6">
+                               <div className="bg-white rounded-3xl p-5 md:p-8 shadow-sm border border-gray-100 relative overflow-hidden group">
+                                  <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50 rounded-full -mr-16 -mt-16 opacity-50"></div>
 
                                   <div className="relative z-10">
-                                    <div className="flex justify-between items-start mb-4">
+                                    <div className="flex justify-between items-start mb-3 md:mb-4">
                                       <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
-                                        {currentMeal.protein}
+                                        {currentMeal?.protein}
                                       </span>
                                       <div className="flex gap-2">
                                          <button 
                                            onClick={() => swapMeal(weeklyPlan.findIndex(x => x.day === selectedDay))}
-                                           className="text-gray-400 hover:text-emerald-600 p-2 hover:bg-gray-50 rounded-full transition-colors" 
+                                           className="text-gray-400 hover:text-emerald-600 p-2 hover:bg-gray-50 rounded-full active:bg-gray-100 transition-colors" 
                                            title="Swap this specific meal"
                                          >
                                             <RefreshCw size={20} />
@@ -552,22 +527,22 @@
                                       </div>
                                     </div>
                                     
-                                    <h2 className="text-3xl md:text-4xl font-extrabold text-slate-800 mb-4 leading-tight">
-                                      {currentMeal.name}
+                                    <h2 className="text-2xl md:text-4xl font-extrabold text-slate-800 mb-3 md:mb-4 leading-tight">
+                                      {currentMeal?.name}
                                     </h2>
 
-                                    <div className="flex flex-wrap gap-4 text-sm text-slate-500 mb-8">
-                                       <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg">
-                                         <Clock size={18} className="text-emerald-500"/> 
-                                         <span className="font-medium">{currentMeal.time} mins</span>
+                                    <div className="flex flex-wrap gap-2 md:gap-4 text-xs md:text-sm text-slate-500 mb-6 md:mb-8">
+                                       <div className="flex items-center gap-1.5 bg-gray-50 px-2 md:px-3 py-1.5 rounded-lg">
+                                         <Clock size={16} className="text-emerald-500"/> 
+                                         <span className="font-medium">{currentMeal?.time} mins</span>
                                        </div>
-                                       <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg">
-                                         <Flame size={18} className="text-orange-500"/> 
-                                         <span className="font-medium">{currentMeal.calories} kcal</span>
+                                       <div className="flex items-center gap-1.5 bg-gray-50 px-2 md:px-3 py-1.5 rounded-lg">
+                                         <Flame size={16} className="text-orange-500"/> 
+                                         <span className="font-medium">{currentMeal?.calories} kcal</span>
                                        </div>
-                                       <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg">
-                                         <List size={18} className="text-blue-500"/> 
-                                         <span className="font-medium">{currentMeal.ingredientsCount} items</span>
+                                       <div className="flex items-center gap-1.5 bg-gray-50 px-2 md:px-3 py-1.5 rounded-lg">
+                                         <List size={16} className="text-blue-500"/> 
+                                         <span className="font-medium">{currentMeal?.ingredientsCount} items</span>
                                        </div>
                                     </div>
 
@@ -576,12 +551,12 @@
                                          <ChefHat size={20} className="text-emerald-600"/> Instructions
                                        </h3>
                                        <div className="space-y-4">
-                                          {currentMeal.instructions.map((step, i) => (
+                                          {currentMeal?.instructions?.map((step, i) => (
                                             <div key={i} className="flex gap-4">
-                                               <span className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm">
+                                               <span className="flex-shrink-0 w-6 h-6 md:w-8 md:h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs md:text-sm mt-0.5">
                                                  {i + 1}
                                                </span>
-                                               <p className="text-slate-600 leading-relaxed pt-1">{step}</p>
+                                               <p className="text-slate-600 text-sm md:text-base leading-relaxed">{step}</p>
                                             </div>
                                           ))}
                                        </div>
@@ -589,11 +564,11 @@
                                   </div>
                                </div>
 
-                               <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                               <div className="bg-white rounded-2xl p-5 md:p-6 shadow-sm border border-gray-100">
                                   <h3 className="font-bold text-slate-800 mb-4">Complete the Meal</h3>
-                                  <div className="flex flex-wrap gap-3">
-                                     {currentMeal.sides.map((side, i) => (
-                                       <div key={i} className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-sm font-medium">
+                                  <div className="flex flex-wrap gap-2">
+                                     {currentMeal?.sides?.map((side, i) => (
+                                       <div key={i} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs md:text-sm font-medium">
                                          + {side}
                                        </div>
                                      ))}
@@ -601,15 +576,15 @@
                                </div>
                             </div>
 
-                            <div className="lg:col-span-1 space-y-6">
-                               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sticky top-6">
-                                  <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
+                            <div className="lg:col-span-1 space-y-4 md:space-y-6">
+                               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-6 sticky top-6">
+                                  <h3 className="font-bold text-lg mb-4 md:mb-6 flex items-center gap-2">
                                     <ShoppingCart size={20} className="text-emerald-600" /> Ingredients
                                   </h3>
                                   
-                                  <div className="space-y-3 mb-8">
-                                     {currentMeal.ingredients.map((ing, i) => (
-                                       <div key={i} className="flex justify-between items-center text-sm p-2 hover:bg-gray-50 rounded-lg transition-colors">
+                                  <div className="space-y-2 md:space-y-3 mb-6 md:mb-8">
+                                     {currentMeal?.ingredients?.map((ing, i) => (
+                                       <div key={i} className="flex justify-between items-center text-sm p-2 hover:bg-gray-50 rounded-lg transition-colors border-b border-gray-50 last:border-0">
                                           <span className="text-slate-700 font-medium">{ing.item}</span>
                                           <span className="text-slate-500 bg-gray-100 px-2 py-0.5 rounded text-xs">{ing.amount} {ing.unit}</span>
                                        </div>
@@ -620,20 +595,20 @@
                                      <h4 className="text-xs font-bold text-amber-800 uppercase mb-2">Nutrition Facts</h4>
                                      <div className="flex justify-between text-sm mb-1 text-amber-900">
                                         <span>Protein</span>
-                                        <span className="font-bold">{currentMeal.nutrition.protein}</span>
+                                        <span className="font-bold">{currentMeal?.nutrition?.protein}</span>
                                      </div>
                                      <div className="flex justify-between text-sm mb-1 text-amber-900">
                                         <span>Carbs</span>
-                                        <span className="font-bold">{currentMeal.nutrition.carbs}</span>
+                                        <span className="font-bold">{currentMeal?.nutrition?.carbs}</span>
                                      </div>
                                      <div className="flex justify-between text-sm text-amber-900">
                                         <span>Fat</span>
-                                        <span className="font-bold">{currentMeal.nutrition.fat}</span>
+                                        <span className="font-bold">{currentMeal?.nutrition?.fat}</span>
                                      </div>
                                   </div>
 
                                   <div className="mt-6 flex flex-wrap gap-2">
-                                     {currentMeal.tags.map(tag => (
+                                     {currentMeal?.tags?.map(tag => (
                                        <span key={tag} className="text-[10px] uppercase font-bold text-gray-500 border border-gray-200 px-2 py-1 rounded">
                                          {tag}
                                        </span>
@@ -651,8 +626,8 @@
                 )}
 
                 {showCustomizeModal && (
-                  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+                  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
                         <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
                            <h3 className="font-bold text-lg">Customize Your Week</h3>
                            <button onClick={() => setShowCustomizeModal(false)}><XIcon size={20}/></button>
@@ -666,7 +641,7 @@
                                     <select 
                                        value={dailyProteins[day]}
                                        onChange={(e) => setDailyProteins({...dailyProteins, [day]: e.target.value})}
-                                       className="block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm p-2 bg-gray-50"
+                                       className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm p-2.5 bg-gray-50"
                                     >
                                        <option value="Any">Surprise Me (Any)</option>
                                        {Object.keys(PROTEIN_CUTS).map(p => <option key={p} value={p}>{p}</option>)}
@@ -676,12 +651,12 @@
                            </div>
                         </div>
                         <div className="p-4 bg-gray-50 border-t flex justify-end gap-2">
-                           <button onClick={() => setShowCustomizeModal(false)} className="px-4 py-2 text-slate-600 hover:bg-gray-200 rounded-lg">Cancel</button>
+                           <button onClick={() => setShowCustomizeModal(false)} className="px-4 py-3 text-slate-600 hover:bg-gray-200 rounded-xl font-medium active:scale-95 transition-transform">Cancel</button>
                            <button 
                              onClick={regeneratePlan}
-                             className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700"
+                             className="px-6 py-3 bg-emerald-600 text-white font-bold rounded-xl active:scale-95 transition-transform shadow-lg"
                            >
-                             Apply & Generate
+                             Apply Changes
                            </button>
                         </div>
                      </div>
@@ -690,29 +665,29 @@
 
                 {activeTab === 'grocery' && (
                   <div className="flex-1 bg-white flex flex-col overflow-hidden">
-                     <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                        <h2 className="text-2xl font-bold text-slate-800">Shopping List</h2>
-                        <button className="text-sm text-emerald-600 font-medium hover:underline">Share List</button>
+                     <div className="p-4 md:p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
+                        <h2 className="text-xl md:text-2xl font-bold text-slate-800">Shopping List</h2>
+                        <button className="text-sm text-emerald-600 font-medium active:text-emerald-800">Share List</button>
                      </div>
-                     <div className="flex-1 overflow-y-auto p-6 pb-24">
-                        <div className="max-w-2xl mx-auto bg-gray-50 rounded-2xl p-6 shadow-inner">
+                     <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-32 md:pb-8">
+                        <div className="max-w-2xl mx-auto bg-gray-50 rounded-2xl p-4 md:p-6 shadow-inner">
                            {groceryList.length > 0 ? groceryList.map((item) => (
                              <div key={item.name} 
                                   onClick={() => toggleGroceryItem(item.name)}
-                                  className={`flex items-center p-4 mb-2 bg-white rounded-xl border transition-all cursor-pointer ${
-                                    checkedItems[item.name] ? 'opacity-50 grayscale border-transparent' : 'border-gray-100 shadow-sm hover:border-emerald-200'
+                                  className={`flex items-center p-3 md:p-4 mb-2 bg-white rounded-xl border transition-all cursor-pointer active:scale-[0.98] ${
+                                    checkedItems[item.name] ? 'opacity-50 grayscale border-transparent' : 'border-gray-100 shadow-sm'
                                   }`}>
-                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center mr-4 transition-colors ${
+                                <div className={`w-5 h-5 md:w-6 md:h-6 rounded-full border-2 flex items-center justify-center mr-3 md:mr-4 transition-colors flex-shrink-0 ${
                                   checkedItems[item.name] ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
                                 }`}>
                                    {checkedItems[item.name] && <CheckCircle size={14} className="text-white" />}
                                 </div>
-                                <div className="flex-1">
-                                   <span className={`font-medium ${checkedItems[item.name] ? 'line-through text-gray-400' : 'text-slate-800'}`}>
+                                <div className="flex-1 min-w-0">
+                                   <span className={`font-medium text-sm md:text-base truncate block ${checkedItems[item.name] ? 'line-through text-gray-400' : 'text-slate-800'}`}>
                                      {item.name}
                                    </span>
                                 </div>
-                                <span className="text-xs font-bold text-slate-500 bg-gray-100 px-3 py-1 rounded-lg">
+                                <span className="text-xs font-bold text-slate-500 bg-gray-100 px-2 py-1 rounded-lg ml-2 whitespace-nowrap">
                                   {item.amountDisplay}
                                 </span>
                              </div>
@@ -725,9 +700,9 @@
                 )}
 
                 {activeTab === 'settings' && (
-                   <div className="flex-1 bg-gray-50 p-6 md:p-12 overflow-y-auto pb-24">
-                      <div className="max-w-xl mx-auto bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
-                         <h2 className="text-2xl font-bold text-slate-800 mb-6">Meal Preferences</h2>
+                   <div className="flex-1 bg-gray-50 p-4 md:p-12 overflow-y-auto pb-32 md:pb-8">
+                      <div className="max-w-xl mx-auto bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8">
+                         <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-6">Meal Preferences</h2>
                          
                          <div className="space-y-6">
                             <div>
@@ -737,10 +712,10 @@
                                      <button
                                        key={d}
                                        onClick={() => setPrefs({...prefs, diet: d})}
-                                       className={`px-4 py-3 rounded-xl text-sm font-bold border transition-all ${
+                                       className={`px-4 py-3 rounded-xl text-sm font-bold border transition-all active:scale-95 ${
                                          prefs.diet === d
-                                         ? 'bg-emerald-600 text-white border-emerald-600'
-                                         : 'bg-white text-slate-600 border-gray-200 hover:border-emerald-300'
+                                         ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
+                                         : 'bg-white text-slate-600 border-gray-200'
                                        }`}
                                      >
                                        {d}
@@ -749,35 +724,31 @@
                                </div>
                             </div>
 
-                            <div>
-                               <label className="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-emerald-500 transition-colors bg-white">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={prefs.kidFriendly} 
-                                    onChange={() => setPrefs({...prefs, kidFriendly: !prefs.kidFriendly})}
-                                    className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500" 
-                                  />
-                                  <div className="ml-3">
-                                     <span className="block font-medium text-slate-800">Kid Friendly Mode</span>
-                                     <span className="block text-xs text-slate-500">Filters out spicy foods and complex tastes</span>
-                                  </div>
-                               </label>
-                            </div>
+                            <label className="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer active:bg-gray-50 transition-colors bg-white">
+                               <input 
+                                 type="checkbox" 
+                                 checked={prefs.kidFriendly} 
+                                 onChange={() => setPrefs({...prefs, kidFriendly: !prefs.kidFriendly})}
+                                 className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500" 
+                               />
+                               <div className="ml-3">
+                                  <span className="block font-medium text-slate-800">Kid Friendly Mode</span>
+                                  <span className="block text-xs text-slate-500">Filters out spicy foods and complex tastes</span>
+                               </div>
+                            </label>
 
-                            <div>
-                               <label className="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-emerald-500 transition-colors bg-white">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={prefs.isFast} 
-                                    onChange={() => setPrefs({...prefs, isFast: !prefs.isFast})}
-                                    className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500" 
-                                  />
-                                  <div className="ml-3">
-                                     <span className="block font-medium text-slate-800">Busy Schedule Mode</span>
-                                     <span className="block text-xs text-slate-500">Only show meals under 30 minutes</span>
-                                  </div>
-                               </label>
-                            </div>
+                            <label className="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer active:bg-gray-50 transition-colors bg-white">
+                               <input 
+                                 type="checkbox" 
+                                 checked={prefs.isFast} 
+                                 onChange={() => setPrefs({...prefs, isFast: !prefs.isFast})}
+                                 className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500" 
+                               />
+                               <div className="ml-3">
+                                  <span className="block font-medium text-slate-800">Busy Schedule Mode</span>
+                                  <span className="block text-xs text-slate-500">Only show meals under 30 minutes</span>
+                               </div>
+                            </label>
 
                             <div>
                                <label className="block text-sm font-bold text-slate-700 mb-3">Max Calories ({prefs.maxCalories})</label>
@@ -788,7 +759,7 @@
                                  step="50"
                                  value={prefs.maxCalories}
                                  onChange={(e) => setPrefs({...prefs, maxCalories: Number(e.target.value)})}
-                                 className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                 className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
                                />
                                <div className="flex justify-between text-xs text-gray-400 mt-2">
                                   <span>300 kcal</span>
@@ -801,7 +772,7 @@
                                 regeneratePlan();
                                 setActiveTab('dashboard');
                               }}
-                              className="w-full py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-lg mt-4"
+                              className="w-full py-4 bg-slate-900 text-white font-bold rounded-xl active:scale-95 transition-transform shadow-lg mt-4"
                             >
                                Save Preferences
                             </button>
@@ -811,16 +782,16 @@
                 )}
 
                 {activeTab === 'scanner' && (
-                  <div className="flex-1 flex flex-col items-center justify-center bg-slate-900 text-white p-8 text-center overflow-y-auto">
+                  <div className="flex-1 flex flex-col items-center justify-center bg-slate-900 text-white p-6 md:p-8 text-center overflow-y-auto">
                      {scanResults.length === 0 ? (
                         <>
                              <div className="bg-white/10 p-6 rounded-full mb-6 backdrop-blur-sm">
-                                <Camera size={48} className={`text-emerald-400 ${isScanning ? 'animate-pulse' : ''}`} />
+                                <Camera size={40} className={`text-emerald-400 ${isScanning ? 'animate-pulse' : ''}`} />
                              </div>
                              
                              {/* Preview Image if Available during scan */}
                              {scannedImage && isScanning && (
-                               <div className="mb-6 relative w-48 h-48 rounded-2xl overflow-hidden border-4 border-emerald-500 shadow-2xl mx-auto">
+                               <div className="mb-6 relative w-40 h-40 rounded-2xl overflow-hidden border-4 border-emerald-500 shadow-2xl mx-auto">
                                   <img src={scannedImage} className="w-full h-full object-cover" />
                                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                                      <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -828,24 +799,24 @@
                                </div>
                              )}
 
-                             <h2 className="text-3xl font-bold mb-4">{isScanning ? 'Analyzing Photo...' : 'AI Pantry Scanner'}</h2>
-                             <p className="max-w-md text-slate-300 mb-8">
+                             <h2 className="text-2xl font-bold mb-4">{isScanning ? 'Analyzing Photo...' : 'AI Pantry Scanner'}</h2>
+                             <p className="max-w-md text-slate-300 mb-8 text-sm md:text-base leading-relaxed">
                                {isScanning ? 'Identifying ingredients and checking pantry stock...' : 'Snap a photo of your fridge contents and let our AI engine invent recipes for you instantly.'}
                              </p>
                              
+                             {/* iOS Compatible File Input */}
                              <input 
                                 type="file" 
                                 ref={fileInputRef} 
                                 className="hidden" 
                                 accept="image/*" 
-                                capture="environment"
                                 onChange={handleFileSelect}
                              />
                              
                              {!isScanning && (
                                  <button 
                                     onClick={() => fileInputRef.current.click()}
-                                    className="px-8 py-3 bg-emerald-500 text-white font-bold rounded-full hover:bg-emerald-600 transition-colors shadow-lg"
+                                    className="px-8 py-4 bg-emerald-500 text-white font-bold rounded-full active:scale-95 transition-transform shadow-lg w-full max-w-xs"
                                  >
                                    Launch Camera
                                  </button>
@@ -854,30 +825,30 @@
                      ) : (
                         <div className="w-full max-w-4xl animate-in fade-in zoom-in duration-300 pb-20">
                             {/* Header & Scanned Image */}
-                            <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-6">
+                            <div className="flex flex-col md:flex-row items-center justify-between mb-6 md:mb-8 gap-4 md:gap-6">
                                <div className="text-left flex-1">
-                                  <h2 className="text-3xl font-bold mb-2">Analysis Complete</h2>
-                                  <p className="text-slate-400">We found {scanResults.length} recipes matching your ingredients.</p>
+                                  <h2 className="text-2xl md:text-3xl font-bold mb-2">Analysis Complete</h2>
+                                  <p className="text-slate-400 text-sm">We found {scanResults.length} recipes matching your ingredients.</p>
                                </div>
                                {scannedImage && (
-                                 <div className="w-24 h-24 md:w-32 md:h-32 rounded-xl overflow-hidden border-2 border-slate-700 shadow-lg flex-shrink-0">
+                                 <div className="w-20 h-20 md:w-32 md:h-32 rounded-xl overflow-hidden border-2 border-slate-700 shadow-lg flex-shrink-0">
                                    <img src={scannedImage} className="w-full h-full object-cover" />
                                  </div>
                                )}
                             </div>
 
-                            {/* Results Grid */}
+                            {/* Results Grid - Vertical List on Mobile */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
                                 {scanResults.map((recipe, idx) => (
-                                   <div key={idx} className="bg-white text-slate-800 rounded-2xl p-5 shadow-lg flex flex-col">
+                                   <div key={idx} className="bg-white text-slate-800 rounded-2xl p-4 md:p-5 shadow-lg flex flex-col">
                                       <div className="flex justify-between items-start mb-2">
-                                         <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded uppercase">{recipe.protein}</span>
+                                         <span className="bg-emerald-100 text-emerald-800 text-[10px] md:text-xs font-bold px-2 py-1 rounded uppercase">{recipe.protein}</span>
                                          <div className="flex items-center gap-1 text-xs text-slate-500 font-medium">
                                             <Clock size={14}/> {recipe.time}m
                                          </div>
                                       </div>
-                                      <h3 className="text-xl font-bold mb-1 leading-tight">{recipe.name}</h3>
-                                      <p className="text-sm text-slate-500 mb-4 flex-grow">
+                                      <h3 className="text-lg md:text-xl font-bold mb-1 leading-tight">{recipe.name}</h3>
+                                      <p className="text-xs md:text-sm text-slate-500 mb-4 flex-grow truncate">
                                         Uses: {recipe.ingredients.slice(0,3).map(i => i.item).join(', ')}...
                                       </p>
                                       
@@ -893,7 +864,7 @@
                                               setScanResults([]);
                                               setScannedImage(null);
                                           }}
-                                          className="w-full py-2 bg-slate-900 text-white text-sm font-bold rounded-lg hover:bg-emerald-600 transition-colors"
+                                          className="w-full py-3 bg-slate-900 text-white text-sm font-bold rounded-xl active:scale-[0.98] transition-transform"
                                       >
                                           Add to Plan ({DAYS[idx % 7]})
                                       </button>
@@ -906,7 +877,7 @@
                                     setScanResults([]);
                                     setScannedImage(null);
                                 }}
-                                className="mt-8 text-slate-400 hover:text-white underline"
+                                className="mt-8 text-slate-400 hover:text-white underline text-sm"
                             >
                                 Discard & Scan Again
                             </button>
@@ -935,7 +906,7 @@
         const MobileNavItem = ({ icon, label, active, onClick }) => (
           <button 
             onClick={onClick}
-            className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors ${
+            className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors active:scale-95 ${
               active ? 'text-emerald-600' : 'text-gray-400'
             }`}
           >
